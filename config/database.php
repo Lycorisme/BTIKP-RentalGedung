@@ -74,9 +74,19 @@ class Database {
             return [];
         }
     }
+    
+    // Update setting
+    public function update_setting($key, $value) {
+        try {
+            $stmt = $this->conn->prepare("UPDATE settings SET `value` = ?, updated_at = NOW() WHERE `key` = ?");
+            return $stmt->execute([$value, $key]);
+        } catch (PDOException $e) {
+            return false;
+        }
+    }
 }
 
-// Helper function for easy access
+// Helper functions for easy access
 function getDB() {
     return Database::getInstance()->getConnection();
 }
@@ -93,6 +103,40 @@ function get_all_settings() {
     return Database::getInstance()->get_all_settings();
 }
 
-// Test connection (comment out in production)
-// echo "Database connected successfully!";
+function update_setting($key, $value) {
+    return Database::getInstance()->update_setting($key, $value);
+}
+
+// Upload logo helper
+function upload_logo($field_name, $upload_dir = '../../../uploads/logos/') {
+    if (!isset($_FILES[$field_name]) || $_FILES[$field_name]['error'] !== UPLOAD_ERR_OK) {
+        return ['success' => false, 'message' => 'No file uploaded'];
+    }
+    
+    $file = $_FILES[$field_name];
+    $allowed = ['jpg', 'jpeg', 'png', 'gif'];
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    
+    if (!in_array($ext, $allowed)) {
+        return ['success' => false, 'message' => 'Invalid file type'];
+    }
+    
+    if ($file['size'] > 2 * 1024 * 1024) { // 2MB
+        return ['success' => false, 'message' => 'File too large (max 2MB)'];
+    }
+    
+    // Create directory if not exists
+    if (!is_dir($upload_dir)) {
+        mkdir($upload_dir, 0755, true);
+    }
+    
+    $filename = uniqid() . '_' . time() . '.' . $ext;
+    $filepath = $upload_dir . $filename;
+    
+    if (move_uploaded_file($file['tmp_name'], $filepath)) {
+        return ['success' => true, 'filename' => $filename, 'path' => 'uploads/logos/' . $filename];
+    }
+    
+    return ['success' => false, 'message' => 'Upload failed'];
+}
 ?>
