@@ -122,6 +122,16 @@ $activeTheme = $settings['app_theme'] ?? 'indigo';
                         primary: currentTheme.primary,
                         secondary: currentTheme.secondary,
                         dark: currentTheme.dark,
+                    },
+                    animation: {
+                        'fade-in-up': 'fadeInUp 0.5s ease-out forwards',
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    },
+                    keyframes: {
+                        fadeInUp: {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
                     }
                 }
             }
@@ -136,8 +146,35 @@ $activeTheme = $settings['app_theme'] ?? 'indigo';
             }
         });
     </script>
+    
+    <style>
+        /* Hide Scrollbar but allow scrolling */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+        
+        /* Smooth Entry Animation Wrapper */
+        .animate-entry {
+            animation: fadeInUp 0.4s ease-out forwards;
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(15px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
 </head>
-<body class="bg-slate-50 font-sans text-slate-800 antialiased selection:bg-primary selection:text-white">
+<body class="bg-slate-50 font-sans text-slate-800 antialiased selection:bg-primary selection:text-white overflow-hidden">
 
     <div class="flex h-screen overflow-hidden">
 
@@ -162,18 +199,21 @@ $activeTheme = $settings['app_theme'] ?? 'indigo';
                 </div>
             </div>
 
-            <nav class="flex-1 overflow-y-auto py-6 px-4 space-y-2">
+            <nav class="flex-1 overflow-y-auto py-6 px-4 space-y-2 no-scrollbar">
                 
                 <p class="px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Main Menu</p>
                 
-                <a href="/situs-rental-gedung/admin/data/dashboard/" 
-                   class="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition-all group <?= menuActive(['dashboard', 'admin'], true) ?>">
-                    <i class="fa-solid fa-gauge-high w-5 group-hover:text-white transition-colors"></i>
-                    Dashboard
+                <a href="/situs-rental-gedung/admin/data/dashboard/" class="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition-all group <?= menuActive(['dashboard', 'admin'], true) ?>">
+                    <i class="fa-solid fa-grid-2 w-5 group-hover:text-white transition-colors"></i> Dashboard
                 </a>
 
                 <a href="/situs-rental-gedung/admin/data/booking/" class="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition-all group <?= menuActive('booking') ?>">
-                    <i class="fa-solid fa-calendar-check w-5 group-hover:text-white transition-colors"></i> Booking Masuk
+                    <div class="relative">
+                        <i class="fa-solid fa-calendar-check w-5 group-hover:text-white transition-colors"></i>
+                        <span id="sidebar-notif-dot" class="hidden absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-rose-500 border-2 border-indigo-900"></span>
+                    </div>
+                    <span>Booking Masuk</span>
+                    <span id="sidebar-notif-count" class="hidden ml-auto bg-rose-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg shadow-rose-500/30">0</span>
                 </a>
 
                 <a href="/situs-rental-gedung/admin/data/gedung/" class="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition-all group <?= menuActive('gedung') ?>">
@@ -217,23 +257,25 @@ $activeTheme = $settings['app_theme'] ?? 'indigo';
 
         <div class="flex h-full flex-1 flex-col overflow-hidden bg-slate-50 relative">
             
-            <header class="flex h-20 items-center justify-between bg-white/80 px-8 backdrop-blur-md sticky top-0 z-40 border-b border-slate-200/60">
+            <header class="flex h-20 items-center justify-between bg-white/80 px-8 backdrop-blur-md sticky top-0 z-40 border-b border-slate-200/60 transition-all duration-300">
                 <div class="flex items-center gap-4">
                     <button id="mobile-menu-btn" class="rounded-xl bg-slate-100 p-2 text-slate-600 lg:hidden hover:bg-indigo-50 hover:text-indigo-600 transition-colors">
                         <i class="fa-solid fa-bars text-xl"></i>
                     </button>
                     
-                    <div class="hidden md:flex items-center gap-2 rounded-2xl bg-slate-100 px-4 py-2.5 transition-all focus-within:ring-2 focus-within:ring-primary/20 focus-within:bg-white w-64 lg:w-96">
+                    <div class="hidden md:flex items-center gap-2 rounded-2xl bg-slate-100 px-4 py-2.5 transition-all focus-within:ring-2 focus-within:ring-primary/20 focus-within:bg-white w-64 lg:w-96 shadow-sm">
                         <i class="fa-solid fa-magnifying-glass text-slate-400"></i>
                         <input type="text" placeholder="Cari data..." class="bg-transparent text-sm font-medium text-slate-600 outline-none placeholder:text-slate-400 w-full">
                     </div>
                 </div>
 
                 <div class="flex items-center gap-4">
-                    <button class="relative rounded-xl bg-white p-2.5 text-slate-500 shadow-sm border border-slate-100 hover:bg-indigo-50 hover:text-primary transition-all">
+                    
+                    <button onclick="toggleNotifModal()" class="relative rounded-xl bg-white p-2.5 text-slate-500 shadow-sm border border-slate-100 hover:bg-indigo-50 hover:text-primary transition-all">
                         <i class="fa-regular fa-bell text-lg"></i>
-                        <span class="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white"></span>
+                        <span id="header-notif-badge" class="hidden absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white animate-pulse"></span>
                     </button>
+
                     <div class="h-8 w-[1px] bg-slate-200 hidden sm:block"></div>
                     
                     <div class="relative group">
@@ -245,7 +287,7 @@ $activeTheme = $settings['app_theme'] ?? 'indigo';
                             <img class="h-9 w-9 rounded-xl border border-slate-200 shadow-sm" src="<?= $userAvatar ?>" alt="">
                         </div>
                         
-                        <div class="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 py-2 invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all z-50">
+                        <div class="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 py-2 invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all z-50 transform origin-top-right">
                             <a href="/situs-rental-gedung/public/" class="block px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-primary">
                                 <i class="fa-solid fa-globe mr-2"></i> Lihat Website
                             </a>
@@ -258,4 +300,151 @@ $activeTheme = $settings['app_theme'] ?? 'indigo';
                 </div>
             </header>
 
-            <main class="flex-1 overflow-y-auto p-4 lg:p-8 scroll-smooth">
+            <div id="notif-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm opacity-0 invisible transition-all duration-300">
+                <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl transform scale-95 transition-all duration-300" id="notif-modal-content">
+                    <div class="flex justify-between items-center px-6 py-4 border-b border-slate-100">
+                        <h3 class="text-lg font-bold text-slate-800">Notifikasi Masuk</h3>
+                        <button onclick="toggleNotifModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
+                            <i class="fa-solid fa-times text-xl"></i>
+                        </button>
+                    </div>
+                    
+                    <div id="notif-list-modal" class="max-h-[60vh] overflow-y-auto no-scrollbar p-2">
+                        <div class="px-6 py-12 text-center text-slate-400 text-sm">
+                            <i class="fa-regular fa-bell-slash text-4xl mb-3 opacity-50 block mx-auto"></i>
+                            <p>Tidak ada notifikasi baru</p>
+                        </div>
+                    </div>
+
+                    <div class="border-t border-slate-100 p-4 bg-slate-50 rounded-b-2xl flex justify-center">
+                        <a href="/situs-rental-gedung/admin/data/booking/" class="text-sm font-bold text-primary hover:underline">
+                            Lihat Semua Data Booking
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <main class="flex-1 overflow-y-auto p-4 lg:p-8 no-scrollbar animate-entry">
+
+<audio id="notif-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
+
+<script>
+    // --- Modal Logic ---
+    const notifModal = document.getElementById('notif-modal');
+    const notifModalContent = document.getElementById('notif-modal-content');
+
+    function toggleNotifModal() {
+        if (notifModal.classList.contains('invisible')) {
+            // Show
+            notifModal.classList.remove('invisible', 'opacity-0');
+            notifModalContent.classList.remove('scale-95');
+            notifModalContent.classList.add('scale-100');
+        } else {
+            // Hide
+            notifModal.classList.add('invisible', 'opacity-0');
+            notifModalContent.classList.remove('scale-100');
+            notifModalContent.classList.add('scale-95');
+        }
+    }
+
+    // Close modal when clicking outside
+    notifModal.addEventListener('click', function(e) {
+        if (e.target === notifModal) {
+            toggleNotifModal();
+        }
+    });
+
+    // --- Notification Polling Logic ---
+    let lastCount = 0;
+
+    async function fetchNotifications() {
+        try {
+            const response = await fetch('/situs-rental-gedung/admin/api/check_notifications.php');
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                const count = result.count;
+                const data = result.data;
+
+                // Elements
+                const headerBadge = document.getElementById('header-notif-badge');
+                const sidebarDot = document.getElementById('sidebar-notif-dot');
+                const sidebarCount = document.getElementById('sidebar-notif-count');
+                const notifListModal = document.getElementById('notif-list-modal');
+
+                if (count > 0) {
+                    // Show Badges
+                    headerBadge.classList.remove('hidden');
+                    sidebarDot.classList.remove('hidden');
+                    sidebarCount.classList.remove('hidden');
+                    sidebarCount.innerText = count;
+
+                    // Play Sound if new notification arrives
+                    if (count > lastCount) {
+                        const audio = document.getElementById('notif-sound');
+                        audio.play().catch(e => console.log('Audio play blocked'));
+                        
+                        // Browser Notification (Optional)
+                        if (Notification.permission === "granted") {
+                            new Notification("Order Baru Masuk!", {
+                                body: `Ada ${count} booking menunggu konfirmasi.`,
+                                icon: '/situs-rental-gedung/assets/logo.png'
+                            });
+                        }
+                    }
+
+                    // Render List for Modal
+                    let listHtml = '';
+                    data.forEach(item => {
+                        listHtml += `
+                            <a href="/situs-rental-gedung/admin/data/booking/detail.php?id=${item.id}" class="block p-4 mb-2 bg-white border border-slate-100 rounded-xl hover:bg-slate-50 hover:border-primary/30 hover:shadow-md transition-all group">
+                                <div class="flex justify-between items-start mb-1">
+                                    <div class="flex items-center gap-2">
+                                        <div class="h-2 w-2 rounded-full bg-primary animate-pulse"></div>
+                                        <p class="text-sm font-bold text-slate-800 group-hover:text-primary transition-colors">${item.nama_lengkap}</p>
+                                    </div>
+                                    <span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">${item.time_ago}</span>
+                                </div>
+                                <div class="flex justify-between items-center mt-2">
+                                    <p class="text-xs text-slate-500">Kode: <span class="font-mono font-semibold text-slate-700">${item.booking_code}</span></p>
+                                    <span class="text-[10px] font-bold bg-amber-100 text-amber-600 px-2 py-1 rounded-lg">Menunggu Konfirmasi</span>
+                                </div>
+                            </a>
+                        `;
+                    });
+                    notifListModal.innerHTML = listHtml;
+
+                } else {
+                    // Hide Badges
+                    headerBadge.classList.add('hidden');
+                    sidebarDot.classList.add('hidden');
+                    sidebarCount.classList.add('hidden');
+                    
+                    // Empty State
+                    notifListModal.innerHTML = `
+                        <div class="px-6 py-12 text-center text-slate-400 text-sm">
+                            <div class="bg-slate-50 h-16 w-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <i class="fa-regular fa-bell-slash text-2xl text-slate-300"></i>
+                            </div>
+                            <p class="font-medium text-slate-500">Tidak ada notifikasi baru</p>
+                            <p class="text-xs mt-1">Semua pesanan sudah ditangani.</p>
+                        </div>
+                    `;
+                }
+
+                lastCount = count;
+            }
+        } catch (error) {
+            console.error('Error fetching notifications:', error);
+        }
+    }
+
+    // Request Notification Permission on Load
+    if (Notification.permission !== "granted") {
+        Notification.requestPermission();
+    }
+
+    // Run immediately and loop
+    fetchNotifications();
+    setInterval(fetchNotifications, 10000); // Poll every 10s
+</script>
