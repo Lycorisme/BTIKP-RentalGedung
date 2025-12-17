@@ -5,178 +5,216 @@ require_once __DIR__ . '/../../config/database.php';
 $error = '';
 $settings = get_all_settings();
 
-// Redirect if already logged in
+// --- 1. Routing Logic Fix ---
+// Jika sudah login, lempar langsung ke Dashboard (bukan Data Gedung)
 if (isset($_SESSION['user_id']) && in_array($_SESSION['role'], ['admin', 'superadmin'])) {
-    header('Location: /situs-rental-gedung/admin/data/gedung/');
+    header('Location: /situs-rental-gedung/admin/data/dashboard/');
     exit;
 }
 
-// Handle login
+// --- 2. Login Logic & Validation ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = trim($_POST['username'] ?? '');
+    // Sanitasi input dasar
+    $username = trim(htmlspecialchars($_POST['username'] ?? '', ENT_QUOTES, 'UTF-8'));
     $password = trim($_POST['password'] ?? '');
     
+    // Validasi Input Kosong
     if (empty($username) || empty($password)) {
-        $error = 'Username dan password harus diisi!';
+        $error = 'Silakan isi username dan password!';
     } else {
         try {
             $db = getDB();
-            $stmt = $db->prepare("SELECT * FROM users WHERE username = ? AND password = ? AND role IN ('admin', 'superadmin') AND is_active = 1");
+            // Query cek user
+            $stmt = $db->prepare("SELECT * FROM users WHERE username = ? AND password = ? AND role IN ('admin', 'superadmin') LIMIT 1");
             $stmt->execute([$username, $password]);
-            $user = $stmt->fetch();
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
             
+            // Validasi Login
             if ($user) {
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['username'] = $user['username'];
-                $_SESSION['email'] = $user['email'];
-                $_SESSION['role'] = $user['role'];
-                $_SESSION['nama_lengkap'] = $user['nama_lengkap'];
-                $_SESSION['login_time'] = time();
-                
-                header('Location: /situs-rental-gedung/admin/data/gedung/');
-                exit;
+                // Cek status aktif
+                if ($user['is_active'] == 0) {
+                    $error = 'Akun Anda dinonaktifkan. Hubungi Superadmin.';
+                } else {
+                    // Set Session
+                    session_regenerate_id(true); // Security: cegah session fixation
+                    $_SESSION['user_id'] = $user['id'];
+                    $_SESSION['username'] = $user['username'];
+                    $_SESSION['email'] = $user['email'];
+                    $_SESSION['role'] = $user['role'];
+                    $_SESSION['nama_lengkap'] = $user['nama_lengkap'];
+                    $_SESSION['login_time'] = time();
+                    
+                    // Redirect ke Dashboard
+                    header('Location: /situs-rental-gedung/admin/data/dashboard/');
+                    exit;
+                }
             } else {
                 $error = 'Username atau password salah!';
             }
         } catch (PDOException $e) {
-            $error = 'Terjadi kesalahan sistem. Silakan coba lagi.';
+            error_log($e->getMessage()); // Log error server, jangan tampilkan ke user
+            $error = 'Terjadi kesalahan sistem. Silakan coba lagi nanti.';
         }
     }
 }
+
+// --- Logic Helper Tema (Sama seperti header_admin.php) ---
+$activeTheme = $settings['app_theme'] ?? 'indigo';
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Login - <?= htmlspecialchars($settings['nama_website'] ?? 'Rental Gedung') ?></title>
+    <title>Login Administrator - <?= htmlspecialchars($settings['nama_website'] ?? 'Rental Gedung') ?></title>
     
+    <?php if(!empty($settings['favicon_url'])): ?>
+    <link rel="icon" href="/situs-rental-gedung/<?= $settings['favicon_url'] ?>" type="image/x-icon">
+    <?php endif; ?>
+
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <script>
+        const themes = {
+            'indigo': { primary: '#4F46E5', secondary: '#10B981', dark: '#1e1b4b' },
+            'ocean': { primary: '#0ea5e9', secondary: '#3b82f6', dark: '#0f172a' },
+            'nature': { primary: '#16a34a', secondary: '#ca8a04', dark: '#14532d' },
+            'rose': { primary: '#e11d48', secondary: '#db2777', dark: '#881337' },
+            'sunset': { primary: '#ea580c', secondary: '#d97706', dark: '#431407' },
+            'teal': { primary: '#0d9488', secondary: '#0891b2', dark: '#115e59' }
+        };
+
+        const activeThemeName = '<?= $activeTheme ?>';
+        const currentTheme = themes[activeThemeName] || themes['indigo'];
+
         tailwind.config = {
             theme: {
                 extend: {
                     fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: currentTheme.primary,
+                        secondary: currentTheme.secondary,
+                        dark: currentTheme.dark,
+                    },
+                    animation: {
+                        'fade-in-up': 'fadeInUp 0.5s ease-out forwards',
+                    },
+                    keyframes: {
+                        fadeInUp: {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
                     }
                 }
             }
         }
     </script>
+    <style>
+        /* Pattern Background Halus */
+        .bg-pattern {
+            background-color: #f8fafc;
+            background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+    </style>
 </head>
-<body class="bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+<body class="bg-pattern font-sans text-slate-800 antialiased min-h-screen flex items-center justify-center p-4 selection:bg-primary selection:text-white">
 
-<!-- Animated Background Elements -->
-<div class="absolute inset-0 opacity-20">
-    <div class="absolute top-0 left-0 w-96 h-96 bg-white rounded-full blur-3xl animate-pulse"></div>
-    <div class="absolute bottom-0 right-0 w-96 h-96 bg-white rounded-full blur-3xl animate-pulse" style="animation-delay: 1s;"></div>
-    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-white rounded-full blur-3xl animate-pulse" style="animation-delay: 2s;"></div>
-</div>
-
-<div class="w-full max-w-md relative z-10">
-    <!-- Logo -->
-    <div class="text-center mb-8">
-        <div class="inline-flex h-20 w-20 rounded-3xl bg-white/20 backdrop-blur-xl items-center justify-center shadow-2xl mb-4 border border-white/30">
-            <i class="fa-solid fa-building text-white text-3xl"></i>
-        </div>
-        <h1 class="text-4xl font-bold text-white mb-2">Admin Login</h1>
-        <p class="text-blue-100 text-lg">Masuk ke dashboard administrator</p>
-    </div>
-
-    <!-- Login Card -->
-    <div class="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-8">
-        <?php if ($error): ?>
-        <div class="mb-6 p-4 rounded-2xl bg-red-500/20 border border-red-500/30 text-white flex items-center gap-3">
-            <i class="fa-solid fa-circle-exclamation text-xl"></i>
-            <span><?= htmlspecialchars($error) ?></span>
-        </div>
-        <?php endif; ?>
-
-        <form method="POST" class="space-y-6">
-            <!-- Username -->
-            <div>
-                <label class="block text-sm font-bold text-white mb-2">
-                    <i class="fa-solid fa-user mr-2"></i>Username
-                </label>
-                <input type="text" name="username" required 
-                    class="w-full px-4 py-3 rounded-xl bg-white/10 border-2 border-white/20 text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/40 transition-all backdrop-blur-sm"
-                    placeholder="Masukkan username" value="<?= htmlspecialchars($_POST['username'] ?? '') ?>">
-            </div>
-
-            <!-- Password -->
-            <div>
-                <label class="block text-sm font-bold text-white mb-2">
-                    <i class="fa-solid fa-lock mr-2"></i>Password
-                </label>
-                <input type="password" name="password" required 
-                    class="w-full px-4 py-3 rounded-xl bg-white/10 border-2 border-white/20 text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/40 transition-all backdrop-blur-sm"
-                    placeholder="Masukkan password">
-            </div>
-
-            <!-- Submit Button -->
-            <button type="submit" 
-                class="w-full py-4 rounded-xl bg-white text-purple-600 font-bold text-lg shadow-2xl hover:shadow-white/30 hover:translate-y-[-4px] transition-all">
-                <i class="fa-solid fa-right-to-bracket mr-2"></i>Login
-            </button>
-        </form>
-
-        <!-- Links -->
-        <div class="mt-8 space-y-3 text-center">
-            <div class="flex items-center gap-4">
-                <div class="flex-1 h-px bg-white/20"></div>
-                <span class="text-blue-100 text-sm">ATAU</span>
-                <div class="flex-1 h-px bg-white/20"></div>
-            </div>
+    <div class="w-full max-w-[400px] animate-fade-in-up">
+        
+        <div class="bg-white rounded-3xl shadow-xl shadow-slate-200/50 overflow-hidden border border-slate-100">
             
-            <p class="text-blue-100 text-sm">
-                Bukan admin? 
-                <a href="/situs-rental-gedung/user/login/" class="text-white hover:text-blue-100 font-bold underline">
-                    Login sebagai Penyewa
-                </a>
-            </p>
-            
-            <p class="text-blue-100 text-sm">
-                <a href="/situs-rental-gedung/public/" class="text-white hover:text-blue-100 font-bold">
-                    <i class="fa-solid fa-home mr-1"></i>Kembali ke Beranda
-                </a>
-            </p>
-        </div>
-    </div>
+            <div class="p-8 pb-0 text-center">
+                <div class="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-gradient-to-tr from-primary to-secondary text-white shadow-lg shadow-primary/30 mb-6 transform transition-transform hover:scale-105 duration-300">
+                    <?php if(!empty($settings['logo_url'])): ?>
+                        <img src="/situs-rental-gedung/<?= $settings['logo_url'] ?>" class="h-10 w-10 object-contain brightness-0 invert">
+                    <?php else: ?>
+                        <i class="fa-solid fa-shield-halved text-3xl"></i>
+                    <?php endif; ?>
+                </div>
+                
+                <h1 class="text-2xl font-bold text-slate-800 tracking-tight">Admin Portal</h1>
+                <p class="text-slate-500 text-sm mt-2">Masuk untuk mengelola <?= htmlspecialchars($settings['nama_website'] ?? 'Sistem') ?></p>
+            </div>
 
-    <!-- Demo Info -->
-    <div class="mt-6 bg-white/10 backdrop-blur-xl rounded-2xl border border-white/20 p-6">
-        <p class="text-white text-sm text-center mb-4 font-semibold">
-            <i class="fa-solid fa-info-circle mr-2"></i>Demo Credentials
+            <div class="p-8">
+                <form method="POST" action="" class="space-y-5">
+                    
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Username</label>
+                        <div class="relative group">
+                            <div class="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
+                                <i class="fa-regular fa-user text-lg"></i>
+                            </div>
+                            <input type="text" name="username" 
+                                class="block w-full rounded-2xl border-0 bg-slate-50 py-3.5 pl-11 pr-4 text-slate-800 ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-primary focus:bg-white transition-all sm:text-sm sm:leading-6 font-medium" 
+                                placeholder="Masukkan username"
+                                value="<?= htmlspecialchars($_POST['username'] ?? '') ?>" 
+                                required autocomplete="off">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Password</label>
+                        <div class="relative group">
+                            <div class="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
+                                <i class="fa-solid fa-lock text-lg"></i>
+                            </div>
+                            <input type="password" name="password" 
+                                class="block w-full rounded-2xl border-0 bg-slate-50 py-3.5 pl-11 pr-4 text-slate-800 ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-primary focus:bg-white transition-all sm:text-sm sm:leading-6 font-medium" 
+                                placeholder="••••••••" 
+                                required>
+                        </div>
+                    </div>
+
+                    <button type="submit" 
+                        class="w-full rounded-2xl bg-primary px-3.5 py-3.5 text-sm font-bold text-white shadow-lg shadow-primary/30 hover:bg-opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-all active:scale-[0.98]">
+                        Masuk ke Dashboard
+                        <i class="fa-solid fa-arrow-right ml-2"></i>
+                    </button>
+
+                </form>
+            </div>
+
+            <div class="bg-slate-50 p-4 text-center border-t border-slate-100">
+                <a href="/situs-rental-gedung/public/" class="text-xs font-semibold text-slate-500 hover:text-primary transition-colors flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-globe"></i> Kembali ke Website Utama
+                </a>
+            </div>
+        </div>
+
+        <p class="text-center text-xs text-slate-400 mt-8 font-medium">
+            &copy; <?= date('Y') ?> <?= htmlspecialchars($settings['nama_website'] ?? 'Rental Gedung') ?>. <br>Secure Admin Panel.
         </p>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div class="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-                <p class="text-blue-100 text-xs mb-2">Superadmin:</p>
-                <p class="text-white font-mono text-sm font-bold">superadmin</p>
-                <p class="text-white font-mono text-sm font-bold">super123</p>
-            </div>
-            <div class="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-                <p class="text-blue-100 text-xs mb-2">Admin:</p>
-                <p class="text-white font-mono text-sm font-bold">admin</p>
-                <p class="text-white font-mono text-sm font-bold">admin123</p>
-            </div>
-        </div>
-    </div>
-</div>
 
-<script>
-<?php if ($error): ?>
-    Swal.fire({
-        icon: 'error',
-        title: 'Login Gagal',
-        text: '<?= addslashes($error) ?>',
-        confirmButtonColor: '#ef4444'
-    });
-<?php endif; ?>
-</script>
+    </div>
+
+    <script>
+    <?php if ($error): ?>
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true,
+            didOpen: (toast) => {
+                toast.addEventListener('mouseenter', Swal.stopTimer)
+                toast.addEventListener('mouseleave', Swal.resumeTimer)
+            }
+        });
+
+        Toast.fire({
+            icon: 'error',
+            title: 'Login Gagal',
+            text: '<?= addslashes($error) ?>'
+        });
+    <?php endif; ?>
+    </script>
 
 </body>
 </html>
