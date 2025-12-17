@@ -1,29 +1,29 @@
 <?php
 require_once '../../../includes/admin/header_admin.php';
 
-// FIX: Inisialisasi variabel $pdo menggunakan helper function dari database.php
+// Inisialisasi variabel $pdo menggunakan helper function dari database.php
 $pdo = getDB();
 
 // --- 1. Query Statistik ---
 
 // A. Total Pendapatan (Status Selesai/Disetujui)
-$queryPendapatan = "SELECT SUM(total_harga) as total FROM booking WHERE status IN ('selesai', 'disetujui')";
+$queryPendapatan = "SELECT SUM(total_harga) as total FROM booking WHERE status IN ('selesai', 'disetujui') AND deleted_at IS NULL";
 $stmt = $pdo->query($queryPendapatan);
 $pendapatan = $stmt->fetch()['total'] ?? 0;
 
 // B. Booking Aktif (Pending/Disetujui)
-$queryBookingAktif = "SELECT COUNT(*) as total FROM booking WHERE status IN ('pending', 'disetujui')";
+$queryBookingAktif = "SELECT COUNT(*) as total FROM booking WHERE status IN ('pending', 'disetujui') AND deleted_at IS NULL";
 $stmt = $pdo->query($queryBookingAktif);
 $bookingAktif = $stmt->fetch()['total'] ?? 0;
 
-// C. Gedung Terpakai (Occupancy) - Sederhana berdasarkan status gedung
-$queryGedungTotal = "SELECT COUNT(*) as total FROM gedung";
-$queryGedungTerpakai = "SELECT COUNT(*) as total FROM gedung WHERE status != 'tersedia'";
+// C. Gedung Terpakai (Occupancy)
+$queryGedungTotal = "SELECT COUNT(*) as total FROM gedung WHERE deleted_at IS NULL";
+$queryGedungTerpakai = "SELECT COUNT(*) as total FROM gedung WHERE status != 'tersedia' AND deleted_at IS NULL";
 $totalGedung = $pdo->query($queryGedungTotal)->fetch()['total'] ?? 0;
 $gedungTerpakai = $pdo->query($queryGedungTerpakai)->fetch()['total'] ?? 0;
 
 // D. Pelanggan Baru (Bulan Ini)
-$queryPelangganBaru = "SELECT COUNT(*) as total FROM users WHERE role = 'penyewa' AND MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())";
+$queryPelangganBaru = "SELECT COUNT(*) as total FROM users WHERE role = 'penyewa' AND MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE()) AND deleted_at IS NULL";
 $stmt = $pdo->query($queryPelangganBaru);
 $pelangganBaru = $stmt->fetch()['total'] ?? 0;
 
@@ -32,27 +32,28 @@ $queryTerbaru = "SELECT b.*, u.nama_lengkap, g.nama as nama_gedung
                  FROM booking b 
                  JOIN users u ON b.penyewa_id = u.id 
                  JOIN gedung g ON b.gedung_id = g.id 
+                 WHERE b.deleted_at IS NULL
                  ORDER BY b.created_at DESC LIMIT 5";
 $stmt = $pdo->query($queryTerbaru);
 $bookings = $stmt->fetchAll();
 ?>
 
-<div class="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+<div class="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end animate-entry">
     <div>
         <h2 class="text-3xl font-bold text-slate-800 tracking-tight">Dashboard Overview</h2>
         <p class="mt-1 text-slate-500">Ringkasan aktivitas penyewaan gedung hari ini.</p>
     </div>
     <div class="flex gap-2">
-        <a href="/situs-rental-gedung/admin/data/booking/create.php" class="flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 hover:translate-y-[-2px] transition-all">
+        <a href="/situs-rental-gedung/admin/data/booking/" class="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary/30 hover:brightness-110 hover:translate-y-[-2px] transition-all">
             <i class="fa-solid fa-plus"></i> Booking Baru
         </a>
     </div>
 </div>
 
-<div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+<div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-8 animate-entry" style="animation-delay: 0.1s">
     
-    <div class="relative overflow-hidden rounded-[2rem] bg-white p-6 shadow-xl shadow-slate-200/50 border border-slate-100 group hover:shadow-2xl hover:shadow-indigo-100/50 transition-all duration-300">
-        <div class="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-indigo-50 transition-all group-hover:scale-150 group-hover:bg-indigo-100"></div>
+    <div class="relative overflow-hidden rounded-[2rem] bg-white p-6 shadow-xl shadow-slate-200/50 border border-slate-100 group hover:shadow-2xl hover:shadow-primary/20 transition-all duration-300">
+        <div class="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-primary/10 transition-all group-hover:scale-150 group-hover:bg-primary/20"></div>
         <div class="relative z-10 flex items-center justify-between">
             <div>
                 <p class="text-sm font-semibold text-slate-500">Total Pendapatan</p>
@@ -61,7 +62,7 @@ $bookings = $stmt->fetchAll();
                     <i class="fa-solid fa-arrow-trend-up"></i> Realtime
                 </p>
             </div>
-            <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-500 text-white shadow-lg shadow-indigo-500/30">
+            <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-secondary text-white shadow-lg shadow-primary/30">
                 <i class="fa-solid fa-wallet text-xl"></i>
             </div>
         </div>
@@ -116,7 +117,7 @@ $bookings = $stmt->fetchAll();
     </div>
 </div>
 
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8 animate-entry" style="animation-delay: 0.2s">
     
     <div class="lg:col-span-2 flex flex-col gap-6">
         
@@ -126,7 +127,7 @@ $bookings = $stmt->fetchAll();
                     <h3 class="text-lg font-bold text-slate-800">Penyewaan Terbaru</h3>
                     <p class="text-sm text-slate-500">Status booking yang baru masuk.</p>
                 </div>
-                <a href="/situs-rental-gedung/admin/data/booking/" class="text-sm font-semibold text-indigo-600 hover:text-indigo-800 hover:underline">Lihat Semua</a>
+                <a href="/situs-rental-gedung/admin/data/booking/" class="text-sm font-bold text-primary hover:text-secondary hover:underline transition-colors">Lihat Semua</a>
             </div>
             
             <div class="overflow-x-auto">
@@ -150,7 +151,7 @@ $bookings = $stmt->fetchAll();
                             <tr class="hover:bg-slate-50/80 transition-colors group">
                                 <td class="px-8 py-4">
                                     <div class="flex items-center gap-3">
-                                        <div class="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xs">
+                                        <div class="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
                                             <?= substr($row['nama_lengkap'], 0, 2) ?>
                                         </div>
                                         <div>
@@ -177,7 +178,7 @@ $bookings = $stmt->fetchAll();
                                     </span>
                                 </td>
                                 <td class="px-6 py-4 text-right">
-                                    <a href="/situs-rental-gedung/admin/data/booking/detail.php?id=<?= $row['id'] ?>" class="text-slate-400 hover:text-indigo-600 transition-colors">
+                                    <a href="/situs-rental-gedung/admin/data/booking/detail.php?id=<?= $row['id'] ?>" class="text-slate-400 hover:text-primary transition-colors">
                                         <i class="fa-solid fa-eye"></i>
                                     </a>
                                 </td>
@@ -192,13 +193,13 @@ $bookings = $stmt->fetchAll();
 
     <div class="flex flex-col gap-6">
         
-        <div class="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-indigo-600 to-violet-600 p-8 text-white shadow-xl shadow-indigo-500/20">
+        <div class="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-primary to-secondary p-8 text-white shadow-xl shadow-primary/20">
             <div class="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10 blur-2xl"></div>
             <div class="absolute -left-10 -bottom-10 h-40 w-40 rounded-full bg-black/10 blur-2xl"></div>
             
             <h3 class="text-2xl font-bold relative z-10">Laporan PDF?</h3>
-            <p class="mt-2 text-indigo-100 text-sm relative z-10">Cetak laporan pendapatan bulanan dengan mudah.</p>
-            <a href="/situs-rental-gedung/admin/laporan/" class="inline-block mt-6 w-full rounded-xl bg-white py-3 text-sm font-bold text-center text-indigo-600 hover:bg-indigo-50 transition-colors shadow-lg relative z-10">
+            <p class="mt-2 text-white/80 text-sm relative z-10">Cetak laporan pendapatan bulanan dengan mudah.</p>
+            <a href="/situs-rental-gedung/admin/laporan/" class="inline-block mt-6 w-full rounded-xl bg-white py-3 text-sm font-bold text-center text-primary hover:bg-slate-50 transition-colors shadow-lg relative z-10">
                 Buka Laporan
             </a>
         </div>
@@ -208,7 +209,7 @@ $bookings = $stmt->fetchAll();
             <div class="space-y-4">
                 <?php
                 // Query simple untuk gedung popular (contoh ambil random/limit 3)
-                $stmt = $pdo->query("SELECT * FROM gedung LIMIT 3");
+                $stmt = $pdo->query("SELECT * FROM gedung WHERE deleted_at IS NULL LIMIT 3");
                 while($g = $stmt->fetch()):
                 ?>
                 <div class="flex items-center gap-4 p-3 rounded-2xl hover:bg-slate-50 transition-colors cursor-pointer group">
@@ -216,7 +217,7 @@ $bookings = $stmt->fetchAll();
                          <img src="<?= !empty($g['foto_utama']) ? '/situs-rental-gedung/' . $g['foto_utama'] : 'https://placehold.co/100x100?text=Gedung' ?>" class="h-full w-full object-cover" alt="">
                     </div>
                     <div class="flex-1">
-                        <h4 class="text-sm font-bold text-slate-800 group-hover:text-indigo-600 transition-colors truncate"><?= htmlspecialchars($g['nama']) ?></h4>
+                        <h4 class="text-sm font-bold text-slate-800 group-hover:text-primary transition-colors truncate"><?= htmlspecialchars($g['nama']) ?></h4>
                         <p class="text-xs text-slate-500">Rp <?= number_format($g['harga_per_hari']/1000000, 1) ?> jt / hari</p>
                     </div>
                 </div>
