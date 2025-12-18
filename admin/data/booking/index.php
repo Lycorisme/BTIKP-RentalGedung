@@ -11,7 +11,12 @@ $conn = getDB();
 requireLogin();
 requireRole(['admin', 'superadmin']);
 
-// Helper: Status Badge
+// --- Helper Functions ---
+
+function formatRupiah($angka){
+    return "Rp " . number_format($angka, 0, ',', '.');
+}
+
 function statusBadge($status) {
     $colors = [
         'pending' => 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400',
@@ -35,36 +40,59 @@ $error_msg = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
-        // A. Soft Delete (Masuk Sampah)
-        if (isset($_POST['action']) && $_POST['action'] === 'soft_delete') {
-            $id = intval($_POST['id']);
-            $stmt = $conn->prepare("UPDATE booking SET deleted_at = NOW() WHERE id = ?");
-            if ($stmt->execute([$id])) $success_msg = "Data berhasil dipindahkan ke sampah.";
-            else $error_msg = "Gagal menghapus data.";
-        }
-
-        // B. Restore (Kembalikan Data)
-        if (isset($_POST['action']) && $_POST['action'] === 'restore') {
-            $id = intval($_POST['id']);
-            $stmt = $conn->prepare("UPDATE booking SET deleted_at = NULL WHERE id = ?");
-            if ($stmt->execute([$id])) $success_msg = "Data berhasil dipulihkan.";
-        }
-
-        // C. Update Status (Via Modal)
+        // A. Update Status (Via Modal)
         if (isset($_POST['action']) && $_POST['action'] === 'update_status') {
             $id = intval($_POST['booking_id']);
             $status = $_POST['status'];
             $allowed = ['pending', 'disetujui', 'ditolak', 'selesai', 'batal'];
+            
             if (in_array($status, $allowed)) {
                 $stmt = $conn->prepare("UPDATE booking SET status = ? WHERE id = ?");
                 if ($stmt->execute([$status, $id])) $success_msg = "Status booking berhasil diperbarui.";
-                else $error_msg = "Gagal update status.";
+                else throw new Exception("Gagal update status.");
             } else {
-                $error_msg = "Status tidak valid.";
+                throw new Exception("Status tidak valid.");
             }
         }
-    } catch (PDOException $e) {
-        $error_msg = "Database Error: " . $e->getMessage();
+
+        // B. Single Actions (Soft Delete & Restore)
+        if (isset($_POST['action']) && $_POST['action'] === 'soft_delete') {
+            $id = intval($_POST['id']);
+            $stmt = $conn->prepare("UPDATE booking SET deleted_at = NOW() WHERE id = ?");
+            if ($stmt->execute([$id])) $success_msg = "Data dipindahkan ke sampah.";
+            else throw new Exception("Gagal menghapus data.");
+        }
+
+        if (isset($_POST['action']) && $_POST['action'] === 'restore') {
+            $id = intval($_POST['id']);
+            $stmt = $conn->prepare("UPDATE booking SET deleted_at = NULL WHERE id = ?");
+            if ($stmt->execute([$id])) $success_msg = "Data berhasil dipulihkan.";
+            else throw new Exception("Gagal memulihkan data.");
+        }
+
+        // C. Bulk Actions (Aksi Massal)
+        if (isset($_POST['action']) && $_POST['action'] === 'bulk_soft_delete') {
+            $ids = explode(',', $_POST['ids']);
+            $ids = array_filter(array_map('intval', $ids));
+            if (!empty($ids)) {
+                $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                $stmt = $conn->prepare("UPDATE booking SET deleted_at = NOW() WHERE id IN ($placeholders)");
+                if ($stmt->execute($ids)) $success_msg = count($ids) . " booking dipindahkan ke sampah.";
+            }
+        }
+
+        if (isset($_POST['action']) && $_POST['action'] === 'bulk_restore') {
+            $ids = explode(',', $_POST['ids']);
+            $ids = array_filter(array_map('intval', $ids));
+            if (!empty($ids)) {
+                $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                $stmt = $conn->prepare("UPDATE booking SET deleted_at = NULL WHERE id IN ($placeholders)");
+                if ($stmt->execute($ids)) $success_msg = count($ids) . " booking berhasil dipulihkan.";
+            }
+        }
+
+    } catch (Exception $e) {
+        $error_msg = "Error: " . $e->getMessage();
     }
 }
 
@@ -73,7 +101,7 @@ $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $limit = 10;
 $offset = ($page - 1) * $limit;
 
-// Filter Vars (Initialize)
+// Filter Vars
 $search = $_GET['search'] ?? '';
 $status_filter = $_GET['status'] ?? '';
 $date_start = $_GET['date_start'] ?? '';
@@ -132,7 +160,7 @@ $bookings = $stmt->fetchAll(PDO::FETCH_ASSOC);
 require_once __DIR__ . '/../../../includes/admin/header_admin.php';
 ?>
 
-<div x-data="bookingManager()" class="p-6 max-w-[1600px] mx-auto">
+<div x-data="bookingManager()" class="p-6 max-w-[1600px] mx-auto pb-24 relative">
     
     <?php if($success_msg): ?>
     <script>Swal.fire({ icon: 'success', title: 'Berhasil', text: '<?= $success_msg ?>', timer: 1500, showConfirmButton: false });</script>
@@ -207,13 +235,11 @@ require_once __DIR__ . '/../../../includes/admin/header_admin.php';
                                     after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 
                                     peer-checked:bg-primary"></div>
                     </div>
-                    <span class="text-xs font-semibold text-slate-600 dark:text-slate-300">Tampilkan Sampah</span>
+                    <span class="text-xs font-semibold text-slate-600 dark:text-slate-300">Sampah</span>
                 </label>
                 
                 <button type="submit" 
-                        :disabled="!hasActiveFilters()"
-                        :class="hasActiveFilters() ? 'bg-primary hover:bg-primary/90 shadow-lg shadow-primary/30' : 'bg-slate-300 dark:bg-slate-700 cursor-not-allowed text-slate-500 dark:text-slate-500'"
-                        class="text-white px-6 py-2 rounded-xl text-sm font-semibold transition-all">
+                        class="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/30 text-white px-6 py-2 rounded-xl text-sm font-semibold transition-all">
                     Terapkan
                 </button>
             </div>
@@ -226,7 +252,7 @@ require_once __DIR__ . '/../../../includes/admin/header_admin.php';
                 <thead class="bg-slate-50 dark:bg-slate-700/50 text-xs uppercase text-slate-500 dark:text-slate-400 font-bold tracking-wider">
                     <tr>
                         <th class="p-4 w-10 text-center">
-                            <input type="checkbox" @click="toggleAll" x-model="allSelected" class="rounded border-slate-300 text-primary focus:ring-primary">
+                            <input type="checkbox" @click="toggleAll" x-model="allSelected" class="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4">
                         </th>
                         <th class="p-4 w-12 text-center">No</th>
                         <th class="p-4">Kode Booking</th>
@@ -244,7 +270,7 @@ require_once __DIR__ . '/../../../includes/admin/header_admin.php';
                                    <?= !empty($row['deleted_at']) ? 'bg-red-50/60 dark:bg-red-900/10 text-red-700 dark:text-red-300' : 'text-slate-600 dark:text-slate-300' ?>">
                             
                             <td class="p-4 text-center">
-                                <input type="checkbox" value="<?= $row['id'] ?>" x-model="selectedItems" class="rounded border-slate-300 text-primary focus:ring-primary">
+                                <input type="checkbox" value="<?= $row['id'] ?>" x-model="selectedItems" class="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4">
                             </td>
                             <td class="p-4 text-center font-mono text-slate-400"><?= $offset + $index + 1 ?></td>
                             <td class="p-4 font-semibold font-mono">
@@ -280,7 +306,7 @@ require_once __DIR__ . '/../../../includes/admin/header_admin.php';
                                 </span>
                             </td>
                             <td class="p-4 text-right">
-                                <div class="hidden md:flex justify-end items-center gap-2">
+                                <div class="flex justify-end items-center gap-2">
                                     <?php if(empty($row['deleted_at'])): ?>
                                         <button @click="openModal('<?= $row['id'] ?>', '<?= $row['booking_code'] ?>', '<?= $row['status'] ?>')" 
                                                 class="p-2 rounded-lg text-slate-400 hover:text-primary hover:bg-indigo-50 dark:hover:bg-slate-700 transition-all" title="Edit Status">
@@ -289,8 +315,8 @@ require_once __DIR__ . '/../../../includes/admin/header_admin.php';
                                         <a href="detail.php?id=<?= $row['id'] ?>" class="p-2 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-slate-700 transition-all" title="Lihat Detail">
                                             <i class="fa-regular fa-eye"></i>
                                         </a>
-                                        <button @click="confirmDelete(<?= $row['id'] ?>, 'soft')" 
-                                                class="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-slate-700 transition-all" title="Hapus (Sampah)">
+                                        <button @click="confirmDelete(<?= $row['id'] ?>)" 
+                                                class="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-slate-700 transition-all" title="Hapus">
                                             <i class="fa-regular fa-trash-can"></i>
                                         </button>
                                     <?php else: ?>
@@ -299,22 +325,6 @@ require_once __DIR__ . '/../../../includes/admin/header_admin.php';
                                             Restore
                                         </button>
                                     <?php endif; ?>
-                                </div>
-
-                                <div class="md:hidden relative" x-data="{ open: false }">
-                                    <button @click="open = !open" @click.outside="open = false" class="p-2 text-slate-400 hover:text-primary transition-colors">
-                                        <i class="fa-solid fa-ellipsis-vertical"></i>
-                                    </button>
-                                    <div x-show="open" class="absolute right-0 top-full mt-1 w-32 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-100 dark:border-slate-600 z-10 py-1" style="display: none;">
-                                        <?php if(empty($row['deleted_at'])): ?>
-                                            <button @click="openModal('<?= $row['id'] ?>', '<?= $row['booking_code'] ?>', '<?= $row['status'] ?>'); open=false" class="block w-full text-left px-4 py-2 text-xs hover:bg-slate-50 dark:hover:bg-slate-700">Edit Status</button>
-                                            <a href="detail.php?id=<?= $row['id'] ?>" class="block w-full text-left px-4 py-2 text-xs hover:bg-slate-50 dark:hover:bg-slate-700">Lihat Detail</a>
-                                            <div class="border-t border-slate-100 my-1"></div>
-                                            <button @click="confirmDelete(<?= $row['id'] ?>, 'soft'); open=false" class="block w-full text-left px-4 py-2 text-xs text-red-500 hover:bg-red-50">Hapus</button>
-                                        <?php else: ?>
-                                            <button @click="confirmRestore(<?= $row['id'] ?>); open=false" class="block w-full text-left px-4 py-2 text-xs text-emerald-500 hover:bg-emerald-50">Restore</button>
-                                        <?php endif; ?>
-                                    </div>
                                 </div>
                             </td>
                         </tr>
@@ -361,6 +371,32 @@ require_once __DIR__ . '/../../../includes/admin/header_admin.php';
                     <a href="?page=<?= $page + 1 ?>&search=<?= $search ?>&status=<?= $status_filter ?>" class="px-3 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs transition-colors">Next</a>
                 <?php endif; ?>
             </div>
+        </div>
+    </div>
+
+    <div x-show="selectedItems.length > 0" 
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0 translate-y-10"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100 translate-y-0"
+         x-transition:leave-end="opacity-0 translate-y-10"
+         class="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl rounded-2xl px-6 py-3 flex items-center gap-4 min-w-[300px] justify-between">
+        
+        <div class="flex items-center gap-3">
+            <span class="bg-primary text-white text-xs font-bold px-2.5 py-1 rounded-lg" x-text="selectedItems.length"></span>
+            <span class="text-sm font-semibold text-slate-700 dark:text-white">Item Terpilih</span>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <button @click="confirmBulkRestore" 
+                    class="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 text-xs font-bold transition-colors">
+                <i class="fa-solid fa-rotate-left mr-1"></i> Restore All
+            </button>
+            <button @click="confirmBulkDelete" 
+                    class="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 text-xs font-bold transition-colors">
+                <i class="fa-regular fa-trash-can mr-1"></i> Delete All
+            </button>
         </div>
     </div>
 
@@ -430,12 +466,21 @@ require_once __DIR__ . '/../../../includes/admin/header_admin.php';
         <input type="hidden" name="action" value="restore">
         <input type="hidden" name="id" id="restoreId">
     </form>
+
+    <form id="bulkDeleteForm" method="POST" class="hidden">
+        <input type="hidden" name="action" value="bulk_soft_delete">
+        <input type="hidden" name="ids" id="bulkDeleteIds">
+    </form>
+
+    <form id="bulkRestoreForm" method="POST" class="hidden">
+        <input type="hidden" name="action" value="bulk_restore">
+        <input type="hidden" name="ids" id="bulkRestoreIds">
+    </form>
 </div>
 
 <script>
     function bookingManager() {
         return {
-            // State Filter yang terikat dengan Input
             filter: {
                 search: '<?= addslashes($search) ?>',
                 status: '<?= $status_filter ?>',
@@ -446,7 +491,6 @@ require_once __DIR__ . '/../../../includes/admin/header_admin.php';
 
             showFilter: <?= (!empty($search) || !empty($status_filter)) ? 'true' : 'false' ?>,
             
-            // Computed Logic untuk Badge Counter
             get activeFilterCount() {
                 let count = 0;
                 if (this.filter.search) count++;
@@ -455,16 +499,8 @@ require_once __DIR__ . '/../../../includes/admin/header_admin.php';
                 if (this.filter.show_deleted) count++;
                 return count;
             },
-
-            // Computed Logic untuk Disable Tombol
-            hasActiveFilters() {
-                return this.filter.search !== '' ||
-                       this.filter.status !== '' ||
-                       this.filter.date_start !== '' ||
-                       this.filter.date_end !== '' ||
-                       this.filter.show_deleted === true;
-            },
             
+            // Selection Logic
             allSelected: false,
             selectedItems: [],
             toggleAll() {
@@ -492,6 +528,7 @@ require_once __DIR__ . '/../../../includes/admin/header_admin.php';
                 this.modalOpen = false;
             },
 
+            // Single Actions
             confirmDelete(id) {
                 Swal.fire({
                     title: 'Pindahkan ke Sampah?',
@@ -501,8 +538,7 @@ require_once __DIR__ . '/../../../includes/admin/header_admin.php';
                     confirmButtonColor: '#ef4444',
                     cancelButtonColor: '#cbd5e1',
                     confirmButtonText: 'Ya, Hapus',
-                    cancelButtonText: 'Batal',
-                    reverseButtons: true
+                    cancelButtonText: 'Batal'
                 }).then((result) => {
                     if (result.isConfirmed) {
                         document.getElementById('deleteId').value = id;
@@ -519,12 +555,46 @@ require_once __DIR__ . '/../../../includes/admin/header_admin.php';
                     showCancelButton: true,
                     confirmButtonColor: '#10b981',
                     cancelButtonColor: '#cbd5e1',
-                    confirmButtonText: 'Ya, Pulihkan',
-                    cancelButtonText: 'Batal'
+                    confirmButtonText: 'Ya, Pulihkan'
                 }).then((result) => {
                     if (result.isConfirmed) {
                         document.getElementById('restoreId').value = id;
                         document.getElementById('restoreForm').submit();
+                    }
+                });
+            },
+
+            // Bulk Actions
+            confirmBulkDelete() {
+                Swal.fire({
+                    title: 'Hapus ' + this.selectedItems.length + ' Booking?',
+                    text: "Data yang dipilih akan dipindahkan ke sampah.",
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#ef4444',
+                    cancelButtonColor: '#cbd5e1',
+                    confirmButtonText: 'Ya, Hapus Semua'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        document.getElementById('bulkDeleteIds').value = this.selectedItems.join(',');
+                        document.getElementById('bulkDeleteForm').submit();
+                    }
+                });
+            },
+            
+            confirmBulkRestore() {
+                Swal.fire({
+                    title: 'Pulihkan ' + this.selectedItems.length + ' Booking?',
+                    text: "Data yang dipilih akan kembali aktif.",
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonColor: '#10b981',
+                    cancelButtonColor: '#cbd5e1',
+                    confirmButtonText: 'Ya, Pulihkan Semua'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        document.getElementById('bulkRestoreIds').value = this.selectedItems.join(',');
+                        document.getElementById('bulkRestoreForm').submit();
                     }
                 });
             }
