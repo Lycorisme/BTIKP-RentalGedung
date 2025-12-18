@@ -5,60 +5,94 @@ require_once __DIR__ . '/../../config/database.php';
 $error = '';
 $settings = get_all_settings();
 
-// --- 1. Routing Logic Fix ---
-// Jika sudah login, lempar langsung ke Dashboard (bukan Data Gedung)
+// --- 1. Routing Logic ---
+// Jika sudah login, lempar langsung ke Dashboard
 if (isset($_SESSION['user_id']) && in_array($_SESSION['role'], ['admin', 'superadmin'])) {
     header('Location: /situs-rental-gedung/admin/data/dashboard/');
     exit;
 }
 
-// --- 2. Login Logic & Validation ---
+// --- 2. Login Logic ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Sanitasi input dasar
-    $username = trim(htmlspecialchars($_POST['username'] ?? '', ENT_QUOTES, 'UTF-8'));
+    // Sanitasi input
+    $email = trim(htmlspecialchars($_POST['email'] ?? '', ENT_QUOTES, 'UTF-8'));
     $password = trim($_POST['password'] ?? '');
     
     // Validasi Input Kosong
-    if (empty($username) || empty($password)) {
-        $error = 'Silakan isi username dan password!';
+    if (empty($email) || empty($password)) {
+        $error = 'Silakan isi email dan password!';
     } else {
         try {
             $db = getDB();
-            // Query cek user
-            $stmt = $db->prepare("SELECT * FROM users WHERE username = ? AND password = ? AND role IN ('admin', 'superadmin') LIMIT 1");
-            $stmt->execute([$username, $password]);
+            
+            // Query hanya berdasarkan EMAIL (Password dicek lewat PHP hash verification)
+            // Kita juga filter role agar penyewa tidak bisa masuk ke halaman admin login ini
+            $stmt = $db->prepare("SELECT * FROM users WHERE email = ? AND role IN ('admin', 'superadmin') LIMIT 1");
+            $stmt->execute([$email]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
             
-            // Validasi Login
             if ($user) {
-                // Cek status aktif
-                if ($user['is_active'] == 0) {
-                    $error = 'Akun Anda dinonaktifkan. Hubungi Superadmin.';
+                // --- LOGIKA VERIFIKASI PASSWORD ---
+                $validPassword = false;
+                $passwordNeedsRehash = false;
+
+                // 1. Cek Hash Modern (Bcrypt/Argon2)
+                if (password_verify($password, $user['password'])) {
+                    $validPassword = true;
+                    // Cek apakah hash perlu diperbarui algoritmannya
+                    if (password_needs_rehash($user['password'], PASSWORD_DEFAULT)) {
+                        $passwordNeedsRehash = true;
+                    }
+                } 
+                // 2. Fallback: Cek Plain Text (Untuk user lama yang belum di-hash)
+                elseif ($password === $user['password']) {
+                    $validPassword = true;
+                    $passwordNeedsRehash = true; // Wajib di-hash ulang demi keamanan
+                }
+
+                if ($validPassword) {
+                    // Cek status aktif
+                    if ($user['is_active'] == 0) {
+                        $error = 'Akun Anda dinonaktifkan. Hubungi Superadmin.';
+                    } else {
+                        // AUTO RE-HASH: Jika login pakai plain text, update ke database jadi hash
+                        if ($passwordNeedsRehash) {
+                            $newHash = password_hash($password, PASSWORD_DEFAULT);
+                            $updateStmt = $db->prepare("UPDATE users SET password = ? WHERE id = ?");
+                            $updateStmt->execute([$newHash, $user['id']]);
+                        }
+
+                        // Set Session
+                        session_regenerate_id(true); // Security
+                        $_SESSION['user_id'] = $user['id'];
+                        $_SESSION['username'] = $user['username'];
+                        $_SESSION['email'] = $user['email'];
+                        $_SESSION['role'] = $user['role'];
+                        $_SESSION['nama_lengkap'] = $user['nama_lengkap'];
+                        $_SESSION['login_time'] = time();
+                        
+                        // Catat Log Login (Optional, jika tabel activity_logs ada)
+                        // require_once __DIR__ . '/../../includes/logger.php';
+                        // logActivity($db, 'Login', 'Auth', $user['id'], "Login berhasil via Email: $email");
+
+                        // Redirect ke Dashboard
+                        header('Location: /situs-rental-gedung/admin/data/dashboard/');
+                        exit;
+                    }
                 } else {
-                    // Set Session
-                    session_regenerate_id(true); // Security: cegah session fixation
-                    $_SESSION['user_id'] = $user['id'];
-                    $_SESSION['username'] = $user['username'];
-                    $_SESSION['email'] = $user['email'];
-                    $_SESSION['role'] = $user['role'];
-                    $_SESSION['nama_lengkap'] = $user['nama_lengkap'];
-                    $_SESSION['login_time'] = time();
-                    
-                    // Redirect ke Dashboard
-                    header('Location: /situs-rental-gedung/admin/data/dashboard/');
-                    exit;
+                    $error = 'Password salah!';
                 }
             } else {
-                $error = 'Username atau password salah!';
+                $error = 'Email tidak ditemukan atau Anda tidak memiliki akses admin.';
             }
         } catch (PDOException $e) {
-            error_log($e->getMessage()); // Log error server, jangan tampilkan ke user
-            $error = 'Terjadi kesalahan sistem. Silakan coba lagi nanti.';
+            error_log($e->getMessage());
+            $error = 'Terjadi kesalahan sistem database.';
         }
     }
 }
 
-// --- Logic Helper Tema (Sama seperti header_admin.php) ---
+// --- Logic Helper Tema ---
 $activeTheme = $settings['app_theme'] ?? 'indigo';
 ?>
 <!DOCTYPE html>
@@ -115,7 +149,6 @@ $activeTheme = $settings['app_theme'] ?? 'indigo';
         }
     </script>
     <style>
-        /* Pattern Background Halus */
         .bg-pattern {
             background-color: #f8fafc;
             background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
@@ -146,16 +179,16 @@ $activeTheme = $settings['app_theme'] ?? 'indigo';
                 <form method="POST" action="" class="space-y-5">
                     
                     <div>
-                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Username</label>
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Email Address</label>
                         <div class="relative group">
                             <div class="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
-                                <i class="fa-regular fa-user text-lg"></i>
+                                <i class="fa-regular fa-envelope text-lg"></i>
                             </div>
-                            <input type="text" name="username" 
+                            <input type="email" name="email" 
                                 class="block w-full rounded-2xl border-0 bg-slate-50 py-3.5 pl-11 pr-4 text-slate-800 ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-primary focus:bg-white transition-all sm:text-sm sm:leading-6 font-medium" 
-                                placeholder="Masukkan username"
-                                value="<?= htmlspecialchars($_POST['username'] ?? '') ?>" 
-                                required autocomplete="off">
+                                placeholder="nama@email.com"
+                                value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" 
+                                required autocomplete="email" autofocus>
                         </div>
                     </div>
 
