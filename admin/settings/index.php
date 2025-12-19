@@ -52,11 +52,11 @@ function delete_old_file($db_key) {
     try {
         $db = getDB();
         // Ambil path file lama dari database
-        $stmt = $db->prepare("SELECT setting_value FROM settings WHERE setting_key = ?");
+        $stmt = $db->prepare("SELECT value FROM settings WHERE `key` = ?");
         $stmt->execute([$db_key]);
         $old_path = $stmt->fetchColumn();
 
-        if ($old_path) {
+        if ($old_path && !empty(trim($old_path))) {
             // Konversi path DB ke Absolute Path server
             // Path di DB: uploads/logos/img.jpg
             // Kita perlu mundur 2 folder dari admin/settings/index.php
@@ -64,7 +64,11 @@ function delete_old_file($db_key) {
             
             // Hapus jika file ada
             if (file_exists($full_path) && is_file($full_path)) {
-                unlink($full_path);
+                if (unlink($full_path)) {
+                    error_log("Berhasil menghapus file lama: " . $full_path);
+                } else {
+                    error_log("Gagal menghapus file lama: " . $full_path);
+                }
             }
         }
     } catch (Exception $e) {
@@ -85,7 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'logo_url'          => '../../uploads/logos/',
             'favicon_url'       => '../../uploads/favicon/',
             'kop_surat_logo'    => '../../uploads/laporan/',
-            'ttd_image'         => '../../uploads/logos/',
+            'ttd_image'         => '../../uploads/ttd/',
             'public_hero_image' => '../../uploads/hero/'
         ];
 
@@ -521,7 +525,7 @@ $settings = get_all_settings();
                             <?php endif; ?>
                             <div class="flex-1 w-full">
                                 <input type="file" name="ttd_image" accept="image/*" class="w-full text-sm text-slate-500 dark:text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary transition-all">
-                                <p class="text-xs text-slate-400 dark:text-slate-500 mt-2">Lokasi: <code>uploads/logos/</code></p>
+                                <p class="text-xs text-slate-400 dark:text-slate-500 mt-2">Format: PNG (dengan background transparan). Lokasi: <code>uploads/ttd/</code></p>
                             </div>
                         </div>
                     </div>
